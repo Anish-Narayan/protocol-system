@@ -1,62 +1,84 @@
 @import "tailwindcss";
 /* Custom scrollbar for better aesthetics */
-:root {
-  color-scheme: dark;
+/* 1. SCI-FI THEME (Default) */
+/* 1. SCI-FI THEME (Default) */
+:root[data-theme="scifi"] {
+  --font-main: 'Rajdhani', sans-serif;
+  --font-mono: '"JetBrains Mono"', monospace;
+  
+  --bg-main: #030303;
+  --bg-surface: #0a0a0a;
+  
+  --col-primary: #22d3ee;      /* Neon Cyan */
+  --col-primary-dim: #083344;
+  --col-primary-text: #22d3ee;
+  
+  --col-danger: #ef4444;       /* Neon Red */
+  --col-danger-dim: #450a0a;
+  
+  --col-text-main: #e5e5e5;
+  --col-text-muted: #737373;
+  
+  --border-width: 1px;
+  --corner-radius: 0px;        /* Sharp corners */
+}
+
+/* 2. ANCIENT EGYPT THEME */
+:root[data-theme="egypt"] {
+  --font-main: 'Cinzel', serif;
+  --font-mono: 'Cinzel', serif; 
+  
+  --bg-main: #f0e6d2;          /* Papyrus Beige */
+  --bg-surface: #e6dac3;       /* Darker Sand */
+  
+  --col-primary: #b45309;      /* Bronze/Gold Border */
+  --col-primary-dim: #d6ceb8;  
+  --col-primary-text: #1e3a8a; /* Lapis Lazuli Blue */
+  
+  --col-danger: #9f1239;       /* Deep Clay Red */
+  --col-danger-dim: #fca5a5;
+  
+  --col-text-main: #27272a;    /* Dark Ink */
+  --col-text-muted: #57534e;   /* Sepia */
+  
+  --border-width: 2px;
+  --corner-radius: 6px;        /* Worn corners */
 }
 
 body {
-  background-color: #030303;
-  color: #a3a3a3;
-  font-family: 'Rajdhani', sans-serif;
-  overflow-x: hidden; /* Prevent horizontal scroll */
+  background-color: var(--bg-main);
+  color: var(--col-text-main);
+  font-family: var(--font-main);
+  transition: background-color 0.5s ease, color 0.5s ease;
+  overflow-x: hidden;
 }
 
-/* Sci-Fi Grid Background */
-.bg-grid {
-  background-size: 40px 40px;
+/* --- THEME SPECIFIC BACKGROUNDS --- */
+
+/* Sci-Fi Only: Grid & Scanlines */
+[data-theme="scifi"] .bg-grid {
   background-image:
     linear-gradient(to right, rgba(34, 211, 238, 0.05) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(34, 211, 238, 0.05) 1px, transparent 1px);
+  background-size: 40px 40px;
   mask-image: radial-gradient(circle at center, black 40%, transparent 100%);
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
 }
 
-/* CRT Scanline Effect */
-.scanlines {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(
-    to bottom,
-    rgba(255,255,255,0),
-    rgba(255,255,255,0) 50%,
-    rgba(0,0,0,0.1) 50%,
-    rgba(0,0,0,0.1)
-  );
+[data-theme="scifi"] .scanlines {
+  position: fixed; inset: 0; pointer-events: none; z-index: 50; opacity: 0.5;
+  background: linear-gradient(to bottom, transparent 50%, rgba(0,0,0,0.1) 50%);
   background-size: 100% 4px;
-  pointer-events: none;
-  z-index: 50;
-  opacity: 0.6;
 }
 
-/* Mechanical Scrollbar */
-::-webkit-scrollbar {
-    width: 6px;
+/* Egypt Only: Papyrus Texture */
+[data-theme="egypt"] .bg-grid {
+  position: fixed; inset: 0; pointer-events: none; z-index: 0; opacity: 0.15;
+  background-image: url("https://www.transparenttextures.com/patterns/notebook.png");
 }
-::-webkit-scrollbar-track {
-    background: #0a0a0a;
-}
-::-webkit-scrollbar-thumb {
-    background: #1e293b;
-    border: 1px solid #06b6d4;
-    border-radius: 0;
-}
-::-webkit-scrollbar-thumb:hover {
-    background: #06b6d4;
-    box-shadow: 0 0 10px #06b6d4;
-}
+[data-theme="egypt"] .scanlines { display: none; }
+
+/* Custom Scrollbar */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: var(--bg-surface); }
+::-webkit-scrollbar-thumb { background: var(--col-primary); border-radius: var(--corner-radius); }

@@ -7,31 +7,38 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Rajdhani', 'sans-serif'],
-        mono: ['"JetBrains Mono"', 'monospace'],
+        main: ['var(--font-main)'],
+        mono: ['var(--font-mono)'],
       },
       colors: {
-        background: '#030303',
-        surface: '#0a0a0a',
-        // Sci-Fi Palette
-        cyan: {
-          400: '#22d3ee', // Neon Blue
-          500: '#06b6d4',
-          800: '#155e75',
-          900: '#083344',
+        // Abstracted Colors
+        background: 'var(--bg-main)',
+        surface: 'var(--bg-surface)',
+        
+        // "Theme Primary" (Cyan in SciFi, Gold/Lapis in Egypt)
+        primary: {
+          DEFAULT: 'var(--col-primary)', // Border color
+          dim: 'var(--col-primary-dim)', // Backgrounds
+          text: 'var(--col-primary-text)', // Text Color
         },
-        crimson: {
-          500: '#ef4444', // Neon Red
-          900: '#450a0a',
+        
+        // "Theme Danger" (Red)
+        danger: {
+          DEFAULT: 'var(--col-danger)',
+          dim: 'var(--col-danger-dim)',
         },
-        acid: {
-          500: '#84cc16', // Toxic Green
+
+        text: {
+            main: 'var(--col-text-main)',
+            muted: 'var(--col-text-muted)',
         }
       },
-      boxShadow: {
-        'neon-blue': '0 0 5px theme("colors.cyan.500"), 0 0 20px theme("colors.cyan.900")',
-        'neon-red': '0 0 5px theme("colors.crimson.500"), 0 0 20px theme("colors.crimson.900")',
+      borderWidth: {
+        theme: 'var(--border-width)',
       },
+      borderRadius: {
+        theme: 'var(--corner-radius)',
+      }
     },
   },
   plugins: [],

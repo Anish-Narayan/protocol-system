@@ -16,7 +16,7 @@ export const formatDuration = (totalMinutes) => {
   let text = '';
   if (hrs > 0) text += `${hrs}h `;
   if (mins > 0 || hrs === 0) text += `${mins}m`;
-  return text; // Shortened for UI
+  return text;
 };
 
 export const sortTasksByTime = (tasks) => {

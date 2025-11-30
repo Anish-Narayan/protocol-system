@@ -4,40 +4,63 @@ import { db } from '../firebase';
 import { calculateDuration, sortTasksByTime, formatDuration, getTodayString } from '../utils/time';
 import { X, Save, Upload, Trash2, Plus } from 'lucide-react';
 
-const ScheduleEditor = ({ close }) => {
+const ScheduleEditor = ({ close, user }) => {
     const [tasks, setTasks] = useState([]);
     const [isDirty, setIsDirty] = useState(false);
     const [applyToToday, setApplyToToday] = useState(false);
 
+    // 1. Load Base Schedule for the specific User
     useEffect(() => {
         const fetchBase = async () => {
-            const docSnap = await getDoc(doc(db, 'schedules', 'base'));
-            if (docSnap.exists()) setTasks(docSnap.data().tasks || []);
+            if (!user) return;
+            try {
+                const docRef = doc(db, 'users', user.uid, 'schedules', 'base');
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) {
+                    setTasks(docSnap.data().tasks || []);
+                }
+            } catch (error) {
+                console.error("Error loading schedule:", error);
+            }
         };
         fetchBase();
-    }, []);
+    }, [user]);
 
+    // 2. Save Logic
     const handleSave = async () => {
-        const sortedTasks = sortTasksByTime(tasks);
-        await setDoc(doc(db, 'schedules', 'base'), { tasks: sortedTasks, updatedAt: new Date() });
+        if (!user) return;
 
+        const sortedTasks = sortTasksByTime(tasks);
+        
+        // A. Save the Blueprint (Base)
+        await setDoc(doc(db, 'users', user.uid, 'schedules', 'base'), { 
+            tasks: sortedTasks, 
+            updatedAt: new Date() 
+        });
+
+        // B. Optionally Overwrite Today (Daily)
         if (applyToToday) {
             const today = getTodayString();
-            const dailyRef = doc(db, 'schedules', 'daily');
+            const dailyRef = doc(db, 'users', user.uid, 'schedules', 'daily');
             const dailySnap = await getDoc(dailyRef);
+            
+            // Preserve existing penalties so user doesn't lose debt
             let currentPenalties = dailySnap.exists() ? dailySnap.data().penalties || [] : [];
 
-            // Weekend Logic
+            // Weekend Logic Check
             const dayOfWeek = new Date().getDay();
-            const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+            const isWeekend = dayOfWeek === 0 || dayOfWeek === 6; // 0=Sun, 6=Sat
             let activeTasks = [];
 
             if (!isWeekend) {
                 activeTasks = sortedTasks.map(t => ({
-                    ...t, completed: false, partiallyCompleted: false, remaining: 0
+                    ...t, 
+                    completed: false, 
+                    partiallyCompleted: false, 
+                    remaining: 0
                 }));
             } else {
-                alert("Base saved. Weekend Protocol: Today's tasks cleared.");
+                alert("Base saved. Weekend Protocol Active: Today's tasks cleared.");
             }
 
             await setDoc(dailyRef, {
@@ -46,6 +69,8 @@ const ScheduleEditor = ({ close }) => {
                 penalties: currentPenalties,
                 lastRun: today
             });
+            
+            // Reload to reflect changes immediately
             window.location.reload();
         } else {
             setIsDirty(false);
@@ -53,12 +78,17 @@ const ScheduleEditor = ({ close }) => {
         }
     };
 
+    // 3. Input Handlers
     const handleChange = (index, field, value) => {
         const newTasks = [...tasks];
         newTasks[index][field] = value;
+        
+        // Auto-calc duration if times change
         if (field === 'start' || field === 'end') {
             const { start, end } = newTasks[index];
-            if (start && end) newTasks[index].duration = calculateDuration(start, end);
+            if (start && end) {
+                newTasks[index].duration = calculateDuration(start, end);
+            }
         }
         setTasks(newTasks);
         setIsDirty(true);
@@ -67,102 +97,123 @@ const ScheduleEditor = ({ close }) => {
     const handleJSONUpload = (e) => {
         const file = e.target.files[0];
         if (!file) return;
+        
         const reader = new FileReader();
         reader.onload = (event) => {
             try {
                 const json = JSON.parse(event.target.result);
-                const processed = json.map(t => ({...t, duration: calculateDuration(t.start, t.end)}));
-                if (confirm("Replace existing schedule?")) setTasks(processed);
-                else setTasks([...tasks, ...processed]);
+                // Ensure duration is calculated for uploaded items
+                const processed = json.map(t => ({
+                    ...t, 
+                    duration: calculateDuration(t.start, t.end)
+                }));
+                
+                if (confirm("Replace existing schedule completely? Click Cancel to Append instead.")) {
+                    setTasks(processed);
+                } else {
+                    setTasks([...tasks, ...processed]);
+                }
                 setIsDirty(true);
-            } catch (err) { alert("Invalid JSON"); }
+            } catch (err) { 
+                alert("Invalid JSON format"); 
+            }
         };
         reader.readAsText(file);
     };
 
     return (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[100] flex justify-end">
-            <div className="w-full max-w-lg bg-surface border-l border-cyan-900/50 h-full p-6 overflow-y-auto shadow-2xl relative">
+        <div className="fixed inset-0 bg-background/90 backdrop-blur-md z-[100] flex justify-end">
+            <div className="w-full max-w-lg bg-surface border-l border-primary-dim h-full p-6 overflow-y-auto shadow-2xl relative animate-in slide-in-from-right duration-300">
                 
                 {/* Header */}
-                <div className="flex justify-between items-center mb-8 border-b border-gray-800 pb-4">
-                    <h2 className="text-xl font-bold text-cyan-400 uppercase tracking-widest">
-                        System Configuration
+                <div className="flex justify-between items-center mb-8 border-b border-text-muted pb-4">
+                    <h2 className="text-xl font-bold text-primary-text uppercase tracking-widest">
+                        Configuration
                     </h2>
-                    <button onClick={close} className="p-2 hover:bg-gray-800 rounded text-cyan-500"><X /></button>
+                    <button 
+                        onClick={close} 
+                        className="p-2 hover:bg-primary-dim rounded-theme text-danger transition-colors"
+                    >
+                        <X />
+                    </button>
                 </div>
 
                 {/* Toolbar */}
                 <div className="flex flex-col gap-4 mb-6">
                     <div className="flex gap-2">
-                        <label className="flex items-center gap-2 px-4 py-3 bg-gray-900 border border-gray-700 hover:border-cyan-500 cursor-pointer text-xs font-mono uppercase text-gray-300 transition-all flex-1 justify-center">
-                            <Upload size={14} /> Import JSON
+                        <label className="flex items-center gap-2 px-4 py-3 bg-background border border-primary-dim hover:border-primary cursor-pointer text-xs font-mono uppercase text-text-muted transition-all flex-1 justify-center rounded-theme group">
+                            <Upload size={14} className="group-hover:text-primary-text"/> 
+                            <span>Import JSON</span>
                             <input type="file" accept=".json" onChange={handleJSONUpload} className="hidden" />
                         </label>
                         
                         <button 
                             onClick={handleSave}
-                            className="flex items-center gap-2 px-4 py-3 bg-cyan-900/20 border border-cyan-500 text-cyan-400 hover:bg-cyan-500 hover:text-black text-xs font-mono uppercase font-bold transition-all flex-1 justify-center"
+                            className="flex items-center gap-2 px-4 py-3 bg-primary-dim border border-primary text-primary-text hover:bg-primary hover:text-surface text-xs font-mono uppercase font-bold transition-all flex-1 justify-center rounded-theme"
                         >
-                            <Save size={14} /> Commit Changes
+                            <Save size={14} /> Commit
                         </button>
                     </div>
 
-                    <label className="flex items-center gap-3 p-3 border border-gray-800 bg-black/50 cursor-pointer hover:border-gray-600 transition">
+                    <label className="flex items-center gap-3 p-3 border border-primary-dim bg-background cursor-pointer hover:border-primary transition rounded-theme group">
                         <input 
                             type="checkbox" 
                             checked={applyToToday} 
                             onChange={(e) => setApplyToToday(e.target.checked)}
-                            className="w-4 h-4 rounded-none accent-cyan-500 bg-gray-900 border-gray-700" 
+                            className="w-4 h-4 rounded-none bg-surface border-text-muted accent-primary" 
                         />
                         <div>
-                            <span className={applyToToday ? "text-cyan-400 font-bold text-sm uppercase" : "text-gray-400 text-sm uppercase"}>
+                            <span className={applyToToday ? "text-primary-text font-bold text-sm uppercase" : "text-text-muted text-sm uppercase group-hover:text-text-main"}>
                                 Force Override Today
                             </span>
-                            {applyToToday && <p className="text-[10px] text-crimson-500 font-mono mt-1">WARNING: WIPES CURRENT PROGRESS</p>}
                         </div>
                     </label>
                 </div>
 
-                {/* List */}
+                {/* Task List Form */}
                 <div className="space-y-4 pb-20">
                     {tasks.map((task, idx) => (
-                        <div key={idx} className="bg-black p-4 border border-gray-800 hover:border-cyan-800 transition grid gap-3">
+                        <div key={idx} className="bg-background p-4 border border-primary-dim hover:border-primary transition grid gap-3 rounded-theme group">
                             <div className="flex justify-between items-center">
                                 <input 
-                                    className="bg-transparent border-b border-gray-800 focus:border-cyan-500 outline-none w-full text-white font-mono text-sm uppercase tracking-wider placeholder-gray-700"
+                                    className="bg-transparent border-b border-primary-dim focus:border-primary outline-none w-full text-text-main font-mono text-sm uppercase tracking-wider placeholder-text-muted"
                                     value={task.label}
                                     onChange={(e) => handleChange(idx, 'label', e.target.value)}
                                     placeholder="PROTOCOL NAME"
                                 />
-                                <button onClick={() => {
-                                    const newT = tasks.filter((_,i) => i!==idx);
-                                    setTasks(newT);
-                                    setIsDirty(true);
-                                }} className="text-gray-600 hover:text-crimson-500 ml-2"><Trash2 size={16}/></button>
+                                <button 
+                                    onClick={() => {
+                                        const newT = tasks.filter((_,i) => i!==idx);
+                                        setTasks(newT);
+                                        setIsDirty(true);
+                                    }} 
+                                    className="text-text-muted hover:text-danger ml-2 transition-colors"
+                                >
+                                    <Trash2 size={16}/>
+                                </button>
                             </div>
                             
                             <div className="grid grid-cols-2 gap-4">
-                                <div className="bg-gray-900/50 p-2 border border-gray-800">
-                                    <label className="text-[10px] text-cyan-700 block mb-1 uppercase">Start</label>
+                                <div className="bg-primary-dim/10 p-2 border border-primary-dim rounded-theme">
+                                    <label className="text-[10px] text-text-muted block mb-1 uppercase">Start</label>
                                     <input 
                                         type="time" 
                                         value={task.start} 
                                         onChange={(e) => handleChange(idx, 'start', e.target.value)}
-                                        className="bg-transparent text-white w-full text-sm font-mono outline-none"
+                                        className="bg-transparent text-text-main w-full text-sm font-mono outline-none"
                                     />
                                 </div>
-                                <div className="bg-gray-900/50 p-2 border border-gray-800">
-                                    <label className="text-[10px] text-cyan-700 block mb-1 uppercase">End</label>
+                                <div className="bg-primary-dim/10 p-2 border border-primary-dim rounded-theme">
+                                    <label className="text-[10px] text-text-muted block mb-1 uppercase">End</label>
                                     <input 
                                         type="time" 
                                         value={task.end} 
                                         onChange={(e) => handleChange(idx, 'end', e.target.value)}
-                                        className="bg-transparent text-white w-full text-sm font-mono outline-none"
+                                        className="bg-transparent text-text-main w-full text-sm font-mono outline-none"
                                     />
                                 </div>
                             </div>
-                            <div className="text-[10px] text-right text-gray-500 font-mono">
+                            <div className="text-[10px] text-right text-text-muted font-mono">
                                 CALC: {formatDuration(task.duration || 0)}
                             </div>
                         </div>
@@ -173,7 +224,7 @@ const ScheduleEditor = ({ close }) => {
                             setTasks([...tasks, { label: 'New Directive', start: '09:00', end: '10:00', duration: 60 }]);
                             setIsDirty(true);
                         }} 
-                        className="w-full py-4 border border-dashed border-gray-800 text-gray-500 hover:text-cyan-400 hover:border-cyan-500/50 flex items-center justify-center gap-2 transition uppercase text-xs font-mono tracking-widest"
+                        className="w-full py-4 border border-dashed border-primary-dim text-text-muted hover:text-primary-text hover:border-primary flex items-center justify-center gap-2 transition uppercase text-xs font-mono tracking-widest rounded-theme"
                     >
                         <Plus size={16} /> Append Directive
                     </button>

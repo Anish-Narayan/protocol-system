@@ -1,21 +1,48 @@
 import React, { useEffect, useState } from 'react';
-import { db } from './firebase';
+import { db, auth } from './firebase';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { getTodayString, sortPenalties } from './utils/time';
 import TaskList from './components/TaskList';
 import PenaltyList from './components/PenaltyList';
 import ScheduleEditor from './components/ScheduleEditor';
-import { Settings, Cpu, ShieldAlert, Activity } from 'lucide-react';
+import Login from './components/Login';
+import { Settings, Cpu, ShieldAlert, Activity, Pyramid, LogOut, Sun } from 'lucide-react';
 
 const App = () => {
+  const [user, setUser] = useState(null);
   const [dailyData, setDailyData] = useState({ tasks: [], penalties: [], date: '' });
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [theme, setTheme] = useState(localStorage.getItem('app-theme') || 'scifi');
 
+  // 1. Auth Listener
   useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      if (!currentUser) setLoading(false); // Stop loading if no user
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // 2. Theme Engine
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('app-theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => setTheme(prev => prev === 'scifi' ? 'egypt' : 'scifi');
+  const handleLogout = () => signOut(auth);
+
+  // 3. User Data Logic (Only runs if user exists)
+  useEffect(() => {
+    if (!user) return;
+
     const initSystem = async () => {
+      setLoading(true);
       const today = getTodayString();
-      const dailyRef = doc(db, 'schedules', 'daily');
+      // PATH CHANGE: users/{uid}/schedules/daily
+      const dailyRef = doc(db, 'users', user.uid, 'schedules', 'daily');
       const dailySnap = await getDoc(dailyRef);
 
       if (!dailySnap.exists()) {
@@ -32,17 +59,19 @@ const App = () => {
     };
 
     initSystem();
+
     const interval = setInterval(() => {
       const currentToday = getTodayString();
       if (dailyData.date && currentToday !== dailyData.date) {
-        window.location.reload(); 
+        // Force refresh to trigger rollover logic
+        initSystem();
       }
     }, 60000);
     return () => clearInterval(interval);
-  }, [dailyData.date]);
+  }, [user, dailyData.date]); // Re-run if user changes or date changes
 
   const performRollover = async (todayStr, previousDailyData) => {
-    console.log("INITIALIZING ROLLOVER SEQUENCE...");
+    console.log("INITIALIZING USER ROLLOVER...");
     let newPenaltiesMap = {};
 
     if (previousDailyData.penalties) {
@@ -70,7 +99,8 @@ const App = () => {
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
 
     if (!isWeekend) {
-        const baseRef = doc(db, 'schedules', 'base');
+        // PATH CHANGE: users/{uid}/schedules/base
+        const baseRef = doc(db, 'users', user.uid, 'schedules', 'base');
         const baseSnap = await getDoc(baseRef);
         if (baseSnap.exists()) {
           newTasks = baseSnap.data().tasks.map(t => ({
@@ -80,13 +110,15 @@ const App = () => {
     }
 
     const newDaily = { date: todayStr, tasks: newTasks, penalties: sortedPenalties, lastRun: todayStr };
-    await setDoc(doc(db, 'schedules', 'daily'), newDaily);
+    // PATH CHANGE
+    await setDoc(doc(db, 'users', user.uid, 'schedules', 'daily'), newDaily);
     setDailyData(newDaily);
   };
 
   const updateDaily = async (newData) => {
     setDailyData(newData);
-    await updateDoc(doc(db, 'schedules', 'daily'), newData);
+    // PATH CHANGE
+    await updateDoc(doc(db, 'users', user.uid, 'schedules', 'daily'), newData);
   };
 
   const handleTaskUpdate = (updatedTask) => {
@@ -125,98 +157,88 @@ const App = () => {
   };
 
   if (loading) return (
-    <div className="h-screen w-full bg-background flex flex-col items-center justify-center text-cyan-500 font-mono tracking-widest">
+    <div className="h-screen w-full bg-background flex flex-col items-center justify-center text-primary-text font-mono tracking-widest">
         <Activity className="animate-spin mb-4" />
         <span className="animate-pulse">BOOTING SYSTEM...</span>
     </div>
   );
 
-  const dayOfWeek = new Date().getDay();
-  const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+  // If no user, show login
+  if (!user) return <Login />;
+
+  const isWeekend = new Date().getDay() === 0 || new Date().getDay() === 6;
 
   return (
-    <div className="min-h-screen bg-background relative selection:bg-cyan-500 selection:text-black">
-      {/* Background FX */}
+    <div className="min-h-screen bg-background relative transition-colors duration-500">
       <div className="bg-grid"></div>
       <div className="scanlines"></div>
 
       <div className="relative z-10 max-w-7xl mx-auto p-4 lg:p-8">
         
-        {/* Header */}
-        <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 border-b border-cyan-900/50 pb-6 gap-4">
+        {/* HEADER */}
+        <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 border-b border-primary-dim pb-6 gap-4">
           <div>
-            <div className="flex items-center gap-2 text-[10px] font-mono text-cyan-700 mb-1">
-                <span className="w-2 h-2 bg-acid-500 animate-pulse shadow-[0_0_8px_#84cc16]" />
-                SYSTEM ONLINE
+            <div className="flex items-center gap-2 text-[10px] font-mono text-primary-text mb-1 opacity-80">
+                <span className="w-2 h-2 bg-text-main animate-pulse" />
+                USER: {user.email.split('@')[0].toUpperCase()}
             </div>
-            <h1 className="text-3xl md:text-4xl font-bold tracking-tighter text-white uppercase drop-shadow-[0_0_5px_rgba(34,211,238,0.5)]">
-                Protocol // <span className="text-cyan-400">{dailyData.date}</span>
+            <h1 className="text-4xl font-bold tracking-tighter text-text-main uppercase drop-shadow-md">
+                {theme === 'scifi' ? 'PROTOCOL //' : 'THE DYNASTY'} <span className="text-primary-text">{dailyData.date}</span>
             </h1>
           </div>
           
-          <button 
-            onClick={() => setIsEditorOpen(true)}
-            className="group flex items-center gap-3 bg-cyan-950/20 border border-cyan-800 hover:border-cyan-400 hover:bg-cyan-900/40 px-5 py-3 skew-x-[-10deg] transition-all duration-300"
-          >
-            <div className="skew-x-[10deg] flex items-center gap-2">
-                <Settings size={18} className="text-cyan-500 group-hover:rotate-90 transition-transform duration-700" /> 
-                <span className="text-xs font-bold text-cyan-100 uppercase tracking-widest">Config</span>
-            </div>
-          </button>
+          <div className="flex gap-4">
+            <button onClick={toggleTheme} className="p-3 border border-theme border-primary text-primary-text hover:bg-primary-dim transition-all rounded-theme">
+                {theme === 'scifi' ? <Pyramid size={20} /> : <Cpu size={20} />}
+            </button>
+
+            <button onClick={() => setIsEditorOpen(true)} className="flex items-center gap-2 px-5 py-3 border border-theme border-primary text-primary-text hover:bg-primary-dim transition-all rounded-theme uppercase font-bold text-xs tracking-widest">
+                <Settings size={18} /> Config
+            </button>
+
+            <button onClick={handleLogout} className="p-3 border border-theme border-danger text-danger hover:bg-danger hover:text-white transition-all rounded-theme">
+                <LogOut size={20} />
+            </button>
+          </div>
         </header>
 
-        {/* Dashboard Grid */}
         <main className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          
-          {/* Penalties Panel (RED) */}
+          {/* PENALTIES */}
           <section className="relative">
-            <div className="absolute -top-1 -left-1 w-3 h-3 border-l-2 border-t-2 border-crimson-500" />
-            <div className="absolute -bottom-1 -right-1 w-3 h-3 border-r-2 border-b-2 border-crimson-500" />
-            
-            <div className="bg-surface/80 backdrop-blur-sm border border-crimson-900/30 p-6 h-full shadow-[0_0_30px_rgba(239,68,68,0.05)]">
-                <h2 className="text-xl font-bold text-crimson-500 mb-6 flex items-center gap-3 uppercase tracking-widest border-b border-crimson-900/30 pb-2">
-                    <ShieldAlert className="animate-pulse" size={20} />
-                    Critical Debt
-                    <span className="ml-auto text-xs font-mono text-crimson-200 bg-crimson-900/50 px-2 py-1">
-                      TOTAL: {dailyData.penalties.filter(p=>!p.completed).reduce((acc, curr) => acc + curr.duration, 0)}m
+            <div className="absolute -top-1 -left-1 w-3 h-3 border-l-2 border-t-2 border-danger" />
+            <div className="absolute -bottom-1 -right-1 w-3 h-3 border-r-2 border-b-2 border-danger" />
+            <div className="bg-surface/80 backdrop-blur-md border border-theme border-danger-dim p-6 h-full shadow-lg">
+                <h2 className="text-xl font-bold text-danger mb-6 flex items-center gap-3 uppercase tracking-widest border-b border-danger-dim pb-2">
+                    <ShieldAlert size={20} />
+                    {theme === 'scifi' ? 'CRITICAL DEBT' : 'CURSED TIME'}
+                    <span className="ml-auto text-xs font-mono text-danger bg-danger-dim px-2 py-1">
+                      {dailyData.penalties.filter(p=>!p.completed).reduce((acc, curr) => acc + curr.duration, 0)}m
                     </span>
                 </h2>
-                <PenaltyList 
-                    penalties={dailyData.penalties} 
-                    onUpdate={handlePenaltyUpdate} 
-                />
+                <PenaltyList penalties={dailyData.penalties} onUpdate={handlePenaltyUpdate} />
             </div>
           </section>
 
-          {/* Schedule Panel (BLUE) */}
+          {/* SCHEDULE */}
           <section className="relative">
-             <div className="absolute -top-1 -right-1 w-3 h-3 border-r-2 border-t-2 border-cyan-500" />
-             <div className="absolute -bottom-1 -left-1 w-3 h-3 border-l-2 border-b-2 border-cyan-500" />
-
-            <div className="bg-surface/80 backdrop-blur-sm border border-cyan-900/30 p-6 h-full shadow-[0_0_30px_rgba(34,211,238,0.05)]">
-              <div className="flex justify-between items-center mb-6 border-b border-cyan-900/30 pb-2">
-                <h2 className="text-xl font-bold text-cyan-400 flex items-center gap-3 uppercase tracking-widest">
-                    <Cpu size={20} /> Operations
+             <div className="absolute -top-1 -right-1 w-3 h-3 border-r-2 border-t-2 border-primary" />
+             <div className="absolute -bottom-1 -left-1 w-3 h-3 border-l-2 border-b-2 border-primary" />
+            <div className="bg-surface/80 backdrop-blur-md border border-theme border-primary-dim p-6 h-full shadow-lg">
+              <div className="flex justify-between items-center mb-6 border-b border-primary-dim pb-2">
+                <h2 className="text-xl font-bold text-primary-text flex items-center gap-3 uppercase tracking-widest">
+                    {theme === 'scifi' ? <Cpu size={20} /> : <Sun size={20} />}
+                    {theme === 'scifi' ? 'OPERATIONS' : 'ROYAL DUTIES'}
                 </h2>
                 {isWeekend && (
-                    <span className="text-[10px] font-mono border border-cyan-700 text-cyan-500 px-2 py-0.5 uppercase tracking-widest">
-                        Weekend Protocol
-                    </span>
+                    <span className="text-[10px] font-mono border border-primary text-primary-text px-2 py-0.5 uppercase">Weekend</span>
                 )}
               </div>
-              
-              <TaskList 
-                tasks={dailyData.tasks} 
-                onUpdate={handleTaskUpdate}
-                onPartial={handlePartialCompletion}
-              />
+              <TaskList tasks={dailyData.tasks} onUpdate={handleTaskUpdate} onPartial={handlePartialCompletion} />
             </div>
           </section>
         </main>
 
-        {isEditorOpen && (
-          <ScheduleEditor close={() => setIsEditorOpen(false)} />
-        )}
+        {isEditorOpen && <ScheduleEditor user={user} close={() => setIsEditorOpen(false)} />}
       </div>
     </div>
   );
